@@ -5,7 +5,7 @@
 // Dołączamy oryginalny nagłówek libltc, opakowany w extern "C"
 // To jest klucz do poprawnego linkowania kodu C z C++
 extern "C" {
-  #include "libltc/ltc.h"
+  #include "ltc.h"
 }
 
 class ESP32_LTC {
