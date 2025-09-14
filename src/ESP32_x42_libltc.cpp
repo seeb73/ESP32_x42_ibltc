@@ -29,7 +29,6 @@ void ESP32_x42_libltc::beginEncoder(int fps, uint8_t pwm_pin) {
   if (_encoder) ltc_encoder_free(_encoder);
   stopEncoderTask();
   
-  // Prawidłowe użycie ltc_encoder_create: rate, fps, tv_standard, drop_frame
   _encoder = ltc_encoder_create(_sample_rate, fps, LTC_TV_625_50, 0);
   if (!_encoder) {
     Serial.println("ERROR: Failed to create LTC encoder!");
@@ -66,9 +65,9 @@ void ESP32_x42_libltc::setTimecode(const char* tc_string) {
   if (!_encoder) return;
   
   SMPTETimecode tc;
-  sscanf(tc_string, "%d:%d:%d:%d", &tc.hours, &tc.minutes, &tc.seconds, &tc.frames);
-
-  // Poprawiono nazwę funkcji na ltc_encoder_set_timecode
+  // Poprawione nazwy pól
+  sscanf(tc_string, "%d:%d:%d:%d", &tc.hours, &tc.mins, &tc.secs, &tc.frame);
+  
   ltc_encoder_set_timecode(_encoder, &tc);
 }
 
@@ -93,7 +92,6 @@ void ESP32_x42_libltc::encoder_task_wrapper(void* pvParameters) {
 }
 
 void ESP32_x42_libltc::encoder_task() {
-  // Poprawiono użycie ltc_encoder_get_buf_len
   size_t buffer_len = (_sample_rate / _fps) * 80;
   ltcsnd_sample_t* ltc_buffer = (ltcsnd_sample_t*) malloc(buffer_len * sizeof(ltcsnd_sample_t));
   if (!ltc_buffer) {
@@ -106,19 +104,14 @@ void ESP32_x42_libltc::encoder_task() {
   unsigned long last_sample_time = micros();
 
   while (true) {
-    // Poprawiono buforowanie - używamy funkcji, która buforuje i zwraca klatkę
-    // Zgodnie z dokumentacją libltc, get_buffer generuje klatkę
     ltc_encoder_get_buffer(_encoder, ltc_buffer);
-
     for (size_t i = 0; i < buffer_len; i++) {
       uint8_t pwm_duty = (uint8_t)(ltc_buffer[i] + 128);
       ledc_set_duty(LEDC_LOW_SPEED_MODE, LTC_PWM_CHANNEL, pwm_duty);
       ledc_update_duty(LEDC_LOW_SPEED_MODE, LTC_PWM_CHANNEL);
-
       while (micros() - last_sample_time < micros_per_sample) {}
       last_sample_time += micros_per_sample;
     }
-    // Zwiększamy timecode po wygenerowaniu pełnej klatki
     ltc_encoder_inc_timecode(_encoder);
   }
   free(ltc_buffer);
@@ -134,14 +127,12 @@ void ESP32_x42_libltc::beginDecoder(int fps, uint8_t adc_pin) {
   _pin = adc_pin;
   if (_decoder) ltc_decoder_free(_decoder);
   stopDecoderTask();
-
-  // Poprawiono użycie ltc_decoder_create: apv, queue_size
+  
   _decoder = ltc_decoder_create(_sample_rate / fps, 30);
   if (!_decoder) {
     Serial.println("ERROR: Failed to create LTC decoder!");
     return;
   }
-
   adc1_channel_t channel = (adc1_channel_t)digitalPinToAnalogChannel(_pin);
   adc1_config_width(ADC_WIDTH_BIT_12);
   adc1_config_channel_atten(channel, ADC_ATTEN_DB_11);
@@ -185,17 +176,15 @@ void ESP32_x42_libltc::decoder_task() {
 
   while (true) {
     int adc_val = adc1_get_raw(channel);
-    ltcsnd_sample_t sample = (ltcsnd_sample_t)((adc_val - 2048) / 16);
-
-    // ltc_decoder_write_s16 - działa na 16-bitowych próbkach
-    // Wymaga konwersji
     int16_t sample_s16 = (int16_t)((adc_val - 2048) * 16);
-    ltc_decoder_write_s16(_decoder, &sample_s16, 1);
 
-    // Zmieniono typ argumentu na LTCFrameExt
+    // Corrected call with all four arguments
+    ltc_decoder_write_s16(_decoder, &sample_s16, 1, 0);
+
+    // Corrected member access: no .timecode
     while (ltc_decoder_read(_decoder, &_decoded_frame)) {
-      // Wbudowana funkcja do konwersji timecode na string
-      ltc_frame_to_string(&_decoded_frame.timecode, _decoded_tc_string);
+      // Manual string conversion because ltc_frame_to_string doesn't exist
+      sprintf(_decoded_tc_string, "%02d:%02d:%02d:%02d", _decoded_frame.timecode.hours, _decoded_frame.timecode.minutes, _decoded_frame.timecode.seconds, _decoded_frame.timecode.frames);
       _new_frame_available = true;
     }
 
