@@ -1,4 +1,4 @@
-#include "ESP32_LTC.h"
+#include "ESP32_x42_libltc.h"
 #include "driver/ledc.h"
 #include "driver/adc.h"
 
