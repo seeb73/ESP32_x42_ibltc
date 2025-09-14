@@ -3,16 +3,16 @@
 #include "driver/adc.h"
 
 // --- Definicje konfiguracyjne ---
-#define LTC_PWM_CHANNEL             LEDC_CHANNEL_0
-#define LTC_PWM_TIMER               LEDC_TIMER_0
-#define LTC_PWM_RESOLUTION          LEDC_TIMER_8_BIT
-#define LTC_ADC_CHANNEL             ADC1_CHANNEL_0 // Domyślnie, zostanie zmienione w beginDecoder
-#define LTC_TASK_STACK_SIZE         4096
-#define LTC_TASK_PRIORITY           2
+#define LTC_PWM_CHANNEL          LEDC_CHANNEL_0
+#define LTC_PWM_TIMER            LEDC_TIMER_0
+#define LTC_PWM_RESOLUTION       LEDC_TIMER_8_BIT
+#define LTC_TASK_STACK_SIZE      4096
+#define LTC_TASK_PRIORITY        2
+#define LTC_BUFFER_SIZE          512
 
-ESP32_LTC::ESP32_LTC() {}
+ESP32_x42_libltc::ESP32_x42_libltc() {}
 
-ESP32_LTC::~ESP32_LTC() {
+ESP32_x42_libltc::~ESP32_x42_libltc() {
   stopEncoderTask();
   stopDecoderTask();
   if (_encoder) ltc_encoder_free(_encoder);
@@ -23,13 +23,13 @@ ESP32_LTC::~ESP32_LTC() {
 //   IMPLEMENTACJA ENKODERA
 // =================================================================
 
-void ESP32_LTC::beginEncoder(int fps, uint8_t pwm_pin) {
+void ESP32_x42_libltc::beginEncoder(int fps, uint8_t pwm_pin) {
   _fps = fps;
   _pin = pwm_pin;
-
   if (_encoder) ltc_encoder_free(_encoder);
   stopEncoderTask();
-
+  
+  // Prawidłowe użycie ltc_encoder_create: rate, fps, tv_standard, drop_frame
   _encoder = ltc_encoder_create(_sample_rate, fps, LTC_TV_625_50, 0);
   if (!_encoder) {
     Serial.println("ERROR: Failed to create LTC encoder!");
@@ -62,18 +62,23 @@ void ESP32_LTC::beginEncoder(int fps, uint8_t pwm_pin) {
   Serial.println("LTC Encoder initialized.");
 }
 
-void ESP32_LTC::setTimecode(const char* tc_string) {
+void ESP32_x42_libltc::setTimecode(const char* tc_string) {
   if (!_encoder) return;
-  ltc_encoder_set_timecode_string(_encoder, tc_string);
+  
+  SMPTETimecode tc;
+  sscanf(tc_string, "%d:%d:%d:%d", &tc.hours, &tc.minutes, &tc.seconds, &tc.frames);
+
+  // Poprawiono nazwę funkcji na ltc_encoder_set_timecode
+  ltc_encoder_set_timecode(_encoder, &tc);
 }
 
-void ESP32_LTC::runEncoderTask() {
+void ESP32_x42_libltc::runEncoderTask() {
   if (!_encoder || _task_handle != NULL) return;
   xTaskCreate(encoder_task_wrapper, "ltcEncoderTask", LTC_TASK_STACK_SIZE, this, LTC_TASK_PRIORITY, &_task_handle);
   Serial.println("LTC Encoder task started.");
 }
 
-void ESP32_LTC::stopEncoderTask() {
+void ESP32_x42_libltc::stopEncoderTask() {
   if (_task_handle != NULL) {
     vTaskDelete(_task_handle);
     _task_handle = NULL;
@@ -83,13 +88,14 @@ void ESP32_LTC::stopEncoderTask() {
   }
 }
 
-void ESP32_LTC::encoder_task_wrapper(void* pvParameters) {
-  static_cast<ESP32_LTC*>(pvParameters)->encoder_task();
+void ESP32_x42_libltc::encoder_task_wrapper(void* pvParameters) {
+  static_cast<ESP32_x42_libltc*>(pvParameters)->encoder_task();
 }
 
-void ESP32_LTC::encoder_task() {
-  size_t buffer_len = ltc_encoder_get_buf_len(_sample_rate, _fps);
-  ltcsnd_sample_t* ltc_buffer = (ltcsnd_sample_t*) malloc(buffer_len);
+void ESP32_x42_libltc::encoder_task() {
+  // Poprawiono użycie ltc_encoder_get_buf_len
+  size_t buffer_len = (_sample_rate / _fps) * 80;
+  ltcsnd_sample_t* ltc_buffer = (ltcsnd_sample_t*) malloc(buffer_len * sizeof(ltcsnd_sample_t));
   if (!ltc_buffer) {
     Serial.println("FATAL: Failed to allocate LTC encoder buffer!");
     vTaskDelete(NULL);
@@ -100,7 +106,8 @@ void ESP32_LTC::encoder_task() {
   unsigned long last_sample_time = micros();
 
   while (true) {
-    ltc_encoder_buffer_frame(_encoder);
+    // Poprawiono buforowanie - używamy funkcji, która buforuje i zwraca klatkę
+    // Zgodnie z dokumentacją libltc, get_buffer generuje klatkę
     ltc_encoder_get_buffer(_encoder, ltc_buffer);
 
     for (size_t i = 0; i < buffer_len; i++) {
@@ -111,6 +118,7 @@ void ESP32_LTC::encoder_task() {
       while (micros() - last_sample_time < micros_per_sample) {}
       last_sample_time += micros_per_sample;
     }
+    // Zwiększamy timecode po wygenerowaniu pełnej klatki
     ltc_encoder_inc_timecode(_encoder);
   }
   free(ltc_buffer);
@@ -121,35 +129,32 @@ void ESP32_LTC::encoder_task() {
 //   IMPLEMENTACJA DEKODERA
 // =================================================================
 
-void ESP32_LTC::beginDecoder(int fps, uint8_t adc_pin) {
+void ESP32_x42_libltc::beginDecoder(int fps, uint8_t adc_pin) {
   _fps = fps;
   _pin = adc_pin;
-
   if (_decoder) ltc_decoder_free(_decoder);
   stopDecoderTask();
 
-  // libltc zaleca kolejkę na kilka klatek, aby znaleźć synchronizację
-  _decoder = ltc_decoder_create(_sample_rate, fps, 30.0);
+  // Poprawiono użycie ltc_decoder_create: apv, queue_size
+  _decoder = ltc_decoder_create(_sample_rate / fps, 30);
   if (!_decoder) {
     Serial.println("ERROR: Failed to create LTC decoder!");
     return;
   }
 
-  // Konfiguracja ADC
   adc1_channel_t channel = (adc1_channel_t)digitalPinToAnalogChannel(_pin);
   adc1_config_width(ADC_WIDTH_BIT_12);
   adc1_config_channel_atten(channel, ADC_ATTEN_DB_11);
-
   Serial.println("LTC Decoder initialized.");
 }
 
-void ESP32_LTC::runDecoderTask() {
+void ESP32_x42_libltc::runDecoderTask() {
   if (!_decoder || _task_handle != NULL) return;
   xTaskCreate(decoder_task_wrapper, "ltcDecoderTask", LTC_TASK_STACK_SIZE, this, LTC_TASK_PRIORITY, &_task_handle);
   Serial.println("LTC Decoder task started.");
 }
 
-void ESP32_LTC::stopDecoderTask() {
+void ESP32_x42_libltc::stopDecoderTask() {
   if (_task_handle != NULL) {
     vTaskDelete(_task_handle);
     _task_handle = NULL;
@@ -157,7 +162,7 @@ void ESP32_LTC::stopDecoderTask() {
   }
 }
 
-bool ESP32_LTC::available() {
+bool ESP32_x42_libltc::available() {
   if (_new_frame_available) {
     _new_frame_available = false;
     return true;
@@ -165,37 +170,35 @@ bool ESP32_LTC::available() {
   return false;
 }
 
-String ESP32_LTC::getTimecodeString() {
+String ESP32_x42_libltc::getTimecodeString() {
   return String(_decoded_tc_string);
 }
 
-void ESP32_LTC::decoder_task_wrapper(void* pvParameters) {
-  static_cast<ESP32_LTC*>(pvParameters)->decoder_task();
+void ESP32_x42_libltc::decoder_task_wrapper(void* pvParameters) {
+  static_cast<ESP32_x42_libltc*>(pvParameters)->decoder_task();
 }
 
-void ESP32_LTC::decoder_task() {
+void ESP32_x42_libltc::decoder_task() {
   const long micros_per_sample = 1000000L / _sample_rate;
   unsigned long last_sample_time = micros();
   adc1_channel_t channel = (adc1_channel_t)digitalPinToAnalogChannel(_pin);
 
   while (true) {
-    // 1. Odczyt próbki z ADC
     int adc_val = adc1_get_raw(channel);
-
-    // 2. Konwersja próbki 12-bit (0-4095) na 8-bit signed (-128 do 127)
-    // Zakładamy, że sygnał jest zbiasowany do 1.65V, czyli środek ADC to ~2048
     ltcsnd_sample_t sample = (ltcsnd_sample_t)((adc_val - 2048) / 16);
 
-    // 3. Przekazanie próbki do dekodera libltc
-    ltc_decoder_write_s8(_decoder, &sample, 1);
+    // ltc_decoder_write_s16 - działa na 16-bitowych próbkach
+    // Wymaga konwersji
+    int16_t sample_s16 = (int16_t)((adc_val - 2048) * 16);
+    ltc_decoder_write_s16(_decoder, &sample_s16, 1);
 
-    // 4. Sprawdzenie, czy dekoder ma gotową ramkę (lub ramki)
-    while (ltc_decoder_read(_decoder, &_smpte)) {
-      smpte_timecode_to_string(&_smpte, _decoded_tc_string, 12);
+    // Zmieniono typ argumentu na LTCFrameExt
+    while (ltc_decoder_read(_decoder, &_decoded_frame)) {
+      // Wbudowana funkcja do konwersji timecode na string
+      ltc_frame_to_string(&_decoded_frame.timecode, _decoded_tc_string);
       _new_frame_available = true;
     }
 
-    // 5. Utrzymanie stałej częstotliwości próbkowania
     while (micros() - last_sample_time < micros_per_sample) {}
     last_sample_time += micros_per_sample;
   }
