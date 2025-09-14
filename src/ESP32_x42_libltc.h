@@ -2,16 +2,15 @@
 
 #include <Arduino.h>
 
-// Dołączamy oryginalny nagłówek libltc, opakowany w extern "C"
-// To jest klucz do poprawnego linkowania kodu C z C++
 extern "C" {
   #include "ltc.h"
 }
 
-class ESP32_LTC {
+// Zmieniona nazwa klasy dla lepszej percepcji
+class ESP32_x42_libltc {
 public:
-  ESP32_LTC();
-  ~ESP32_LTC();
+  ESP32_x42_libltc();
+  ~ESP32_x42_libltc();
 
   // --- Metody Enkodera ---
   void beginEncoder(int fps, uint8_t pwm_pin);
@@ -32,15 +31,17 @@ private:
   int _sample_rate = 48000;
   uint8_t _pin;
   TaskHandle_t _task_handle = NULL;
-  SMPTETimecode _smpte;
+  
+  // Zmieniono typ, aby pasował do LTCFrameExt
+  LTCFrameExt _decoded_frame;
+  volatile bool _new_frame_available = false;
+  char _decoded_tc_string[12];
 
   // Specyficzne dla enkodera
   LTCEncoder* _encoder = nullptr;
 
   // Specyficzne dla dekodera
   LTCDecoder* _decoder = nullptr;
-  volatile bool _new_frame_available = false;
-  char _decoded_tc_string[12]; // "hh:mm:ss:ff" + null
 
   // Prywatne metody (wrappery i zadania RTOS)
   static void encoder_task_wrapper(void* pvParameters);
