@@ -1,0 +1,12 @@
+#######################################
+# Syntax Coloring
+#######################################
+
+ESP32_LTC	KEYWORD1
+
+beginEncoder	KEYWORD2
+beginDecoder	KEYWORD2
+setTimecode	KEYWORD2
+runEncoderTask	KEYWORD2
+available	KEYWORD2
+getTimecodeString	KEYWORD2
