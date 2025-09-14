@@ -178,13 +178,16 @@ void ESP32_x42_libltc::decoder_task() {
     int adc_val = adc1_get_raw(channel);
     int16_t sample_s16 = (int16_t)((adc_val - 2048) * 16);
 
-    // Corrected call with all four arguments
     ltc_decoder_write_s16(_decoder, &sample_s16, 1, 0);
 
-    // Corrected member access: no .timecode
+    // BŁĄD W LINII PONIŻEJ ZOSTAŁ NAPRAWIONY
+    // Dostęp do pól bezpośrednio przez _decoded_frame
     while (ltc_decoder_read(_decoder, &_decoded_frame)) {
-      // Manual string conversion because ltc_frame_to_string doesn't exist
-      sprintf(_decoded_tc_string, "%02d:%02d:%02d:%02d", _decoded_frame.timecode.hours, _decoded_frame.timecode.minutes, _decoded_frame.timecode.seconds, _decoded_frame.timecode.frames);
+      sprintf(_decoded_tc_string, "%02d:%02d:%02d:%02d",
+              _decoded_frame.hours,
+              _decoded_frame.minutes,
+              _decoded_frame.seconds,
+              _decoded_frame.frames);
       _new_frame_available = true;
     }
 
