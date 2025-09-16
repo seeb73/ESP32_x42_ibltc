@@ -43,6 +43,7 @@ ESP32_x42_libltc/
 └── src/
     ├── ESP32_x42_libltc.cpp
     └── ESP32_x42_libltc.h
+    └── (original library files...)
 ```
 
 ## Installation
