@@ -41,7 +41,6 @@ ESP32_x42_libltc/
 ├── library.properties
 ├── keywords.txt
 └── src/
-    ├── .gitkeep              <-- DODAJ TEN PLIK (jeśli katalog jest pusty)
     ├── ESP32_x42_libltc.cpp
     └── ESP32_x42_libltc.h
 ```
