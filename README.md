@@ -36,13 +36,15 @@ The goal of this fork is to make the library easily usable for Arduino IDE users
 ## File Structure
 
 The key files added for ESP32/Arduino compatibility are:
+```
 ESP32_x42_libltc/
 ├── library.properties
 ├── keywords.txt
 └── src/
-       ├── ESP32_x42_libltc.cpp
-       ├── ESP32_x42_libltc.h
-       └── (original library files...)
+    ├── .gitkeep              <-- DODAJ TEN PLIK (jeśli katalog jest pusty)
+    ├── ESP32_x42_libltc.cpp
+    └── ESP32_x42_libltc.h
+```
 
 ## Installation
 
